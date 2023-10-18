@@ -1,0 +1,72 @@
+
+1) 	MPI is used for parallelization on distributed memory, shared memory and hybrid systems. It creates the different processes and facilitates the IPC with messages
+2) 	Always include <mpi.h> -- mpicc for compilation (mostly from openmpi-bin) is advised, allong with -O3 and -Wall. If OpenMP is combined with mpi -fopenmp should be used.
+3) 	In order to generate the different copies mpi uses 2 launchers -> mpiexec and mpirun. -> mpiexec is prefered as it is now the standardized launcher.
+	Example of use : mpiexec -n 4 ./executable -> (-n # signifies the number of processes)
+
+4)	Structure of MPI programs. In contrast with openmp nothing is shared. Each process has a different address space and possibly exists on different nodes.
+	IPC is achieved through messages so the overhead is much bigger in constrast with openmp. The most used case of MPI is used in parallel with openmp on distributed systems,
+	each node bound to one mpi process and inside it openmp parallelizes according to the core count of the machine.
+	
+	Mpi program consists of:
+		int main(int argc, char** argv){	
+			MPI_Init(&argc, &argv); // initializes the environment and the default communicator -> processor space to which all mpi processes are connected
+	
+			int rank; //who am i
+			int size; //number of generated processes
+			MPI_Comm_rank(MPI_COMM_WORLD,&rank); //initialize the rank using the default communicator
+			MPI_Comm_size(MPI_COMM_WORLD,&size); //initialzie the size 
+			
+			//do work 
+			//Mpi functions:
+				MPI_Abort( MPI_Comm comm, int errorcode ); // terminates all processes with the given error code
+				int MPI_Initialized( int *flag ) // sets the flag to true if MPI has been initialized
+				int MPI_Barrier( MPI_Comm comm ) // Barrier for all the processes
+				double t1 = MPI_Wtime(); // get wall time();
+					
+			int MPI_Finalize(); // terminates the environment
+			int MPI_Finalized( int *flag ) // sets the flag to true if MPI has been finalized (I dont know the exact use case of mpi_finalized)
+			return 0;
+		}
+5)	Messaging and IPC in MPI can be differenciated as synchronous or asynchronous
+		Synchronous mpi calls : 
+			int MPI_Send(void* buf, int count, MPI_Datatype type,int dest, int tag, MPI_Comm comm);
+			int MPI_Recv(void* buf, int count, MPI_Datatype type,int source, int tag, MPI_Comm comm, MPI_Status* status) //blocking receive
+			MPI_Sendrecv(&destination_Source_Value, 1, MPI_DOUBLE, 1, tag, &destination_Recv_Value, 1, MPI_DOUBLE, 1, tag, MPI_COMM_WORLD, &status); //Optimized
+			
+			Dependant on the buffer size MPI decides if not explicitly stated weather it will use MPI_Ssend or MPI_Bsend
+				MPI_Ssend -> returns when the destination has started to receive the message
+				MPI_Bsend -> returns after making a copy of the buffer.
+				MPI_Rsend -> Optimized if the destination has already posted the matching receiv -> Diffuclt to use correctly as the condition must be guaranteed 
+			
+		Notes:
+			5.1)	In order to match a message sent by MPI_Send the tag, the source and the destination must be matching.
+			5.2)	MPI_ANY_TAG is a tag wildcard.
+			5.3)	MPI_ANY_SOURCE is a source wildcard.
+			5.4)	SOS: Count of MPI_Recv signifies the buffer size of the allocated memory and the maximum message size that can be received not the necessarily the actual size.
+			5.5)	If we send a message to a destination that does not exists the program will lead to failure.
+			5.6)	As synchronous calls after the MPI_Send and MPI_Recv the processing are testing eagerly/passively weather the message has actually reached the destination.
+			5.7)	Caution is advised about deadlocks.
+
+6)	Collective Operations
+		6.1)	int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,MPI_Op op, int root, MPI_Comm comm);
+				// performs a reduction using the operation op on the data in sendbuf and places the results in recvbuf on the root rank.
+		6.2)	int MPI_Allreduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm);
+				// performs a reduction using the operation op on the data in sendbuf and places the results in recvbuf on all ranks
+		6.3)	int MPI_Bcast( void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm )
+				// broadcast the data from the root rank to all others -- implicit barrier until every other process receives the buffer
+		6.4)	int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype, void *recvbuf, int recvcnt, MPI_Datatype recvtype, int root, MPI_Comm comm)
+				// gathers data from the sendbuf buffers into a recvbuf buffer on the root rank. Recvbuf, recvcnt and recvtype are significant only on the root rank
+				// Note: the sendcnt needs to be the same on all ranks
+		6.5)	int MPI_Gatherv(void *sendbuf, int sendcnt, MPI_Datatype sendtype, void *recvbuf, int *recvcnts, int *displs, MPI_Datatype recvtype, int root, MPI_Comm comm)
+		6.6)	int MPI_Allgather(void *sendbuf, int sendcnt, MPI_Datatype sendtype, void *recvbuf, int recvcnt, MPI_Datatype recvtype, MPI_Comm comm)
+				// similar to MPI_Gather, but the data is gathered at all ranks and not just a root it is semantically the same as an MPI_Gather followed by MPI_Bcast.
+		6.7)	int MPI_Allgatherv(void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int *recvcounts, int *displs, MPI_Datatype recvtype, MPI_Comm comm)
+				
+				
+				
+				
+				
+				
+				
+				

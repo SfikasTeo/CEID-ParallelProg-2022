@@ -1,0 +1,161 @@
+
+1) Always use the -fopenmp -O3 (for optimization purposes) -mfma (enable the fma architectural command) - Wall (better warning signals) -xT (enables vectorization & impoves cache performance)
+2) #include <omp.h>
+
+3)  omp_set_num_threads(NUM_THREADS); -- set the number of threads ( argv[1] may be used ) 
+    omp_get_thread_num(); --Who am i? ( integer )
+    omp_get_num_threads(); --Thread count of the current running parallel region (integer)
+    omp_get_max_threads(); --TOTAL thread count.
+
+4) #pragma omp parallel --Create the THREADS -- followed by a barrier
+    CLAUSES :
+    if(scalar expression) -- only parallelizes if true
+    num_threads(number) -- set number of threads 
+    private()
+    shared()
+    firstprivate() -- private variable that gets initialized by its global counterpart
+    lastprivate() -- exports the last value of the variable to its global counterpart
+    reduction( operant : list_of_values_to_be_reduced )
+        allowed operants :  +,-,*,&,^,|,&&,||,min, max
+
+    4.1) #pragma omp for --Parallelizes the for loop exatly below it -- followed by a barrier
+            nowait --Turn off the barrier
+            in order to deal with nested parallel regions we use collapse(#number) clause
+    4.2) #pragma omp barrier --Creates a pthread_join(). Necessary and explicit synchronization
+    4.4) #pragma omp sections -- each section is assigned to a different thread (sets the sections block ) -- followed by a barrier
+            #pragma omp section -- creates the different sections
+    4.5) #pragma omp single -- only 1 thread enters the region -- followed by a a barrier
+            #pragma omp master -- if( omp_get_thread_num() == 0 ) Executed only by master thread
+    4.6) #pragma omp critical -- Creates a critical region
+            It is paramount that the programmer understands the concepts of deadlocks and race conditions
+    4.7) #pragma omp atomic -- #pragma omp atomic capture (Use of some hardaware-supported atomic operation ONLY FOR 1 action. \
+                                                            Use of capture is critical if we also need to store, and increment a value)
+
+5) #pragma omp parallel for (Combined directives -- pragma omp parallel section is another example) -- includes 5 and 6 -- followed by a barrier
+    schedule(type,chunksize)
+6) for , sections , single all have implicit barriers -- Use of nowait clause eliminates the barrier -> speed increase
+7) loop scheduling -> (static , dynamic , guided , runtime , auto ) , chunksize -- if chunk is not specified , it is equal to N/P 
+8) omp_get_wtime() -> for debugging and testing speedup
+9) OpenMp Locks -- more straight forward mutex support --same as pthread mutex implementation
+    omp_lock_t lck; -- create the mutex
+    omp_init_lock(&lck); -- initializes the mutex
+    omp_set_lock(&lck); -- lock before the critical region
+    omp_set_lock(&lck);  -- unlock after the critical region
+    omp_destroy_lock(&lck); -- destroy-free the mutex
+
+10) setenv OpenMp Environmental Variables -- THESE are used during execution -- example:< export OMP_PROC_BIND=true && ./exe >
+    OMP_NUM_THREADS integer
+    OMP_DYNAMIC TRUE || FALSE --> Allows the runtime system to provide fewer threads than requested for a parallel region
+    OMP_SCHEDULE="type,chunksize"
+    OMP_NESTED TRUE || FALSE
+    OMP_PROC_BIND TRUE || FALSE --> could greatly improve performance
+    OMP_WAIT_POLICY ACTIVE || PASIVE --> spin or sleep policies for the thread. 
+
+11) SOS -- ALWAYS check your code for false sharing and cache thrashing.
+    A way of minimizing falsesharing is with memory padding. -> #define PADSIZE 8 to a double 2d array -> 
+    the point is each processor to have a different cache chunk. The size of the PADSIZE must be dynamic -> double array[][PADSIZE];
+    PADSIZE = cache_line_size / sizeof(double);
+
+12) Loop shceduling : schedule(type, cunksize)
+    12.1) schedule(static,chuncksize) -> the distribution of the loop to the threds is predetermined (the chunksizes are modulo-ed to each thread).
+            When we are looping functions that vary in complexity based on the input, making a static
+            chunksize of N/P might ununiformly distribute the workload. --> (static,1) might be a solution.
+            But a chunksize of 1 may be destructive due to the cache misses. Execution time analogous to the overhead MUST BE AVOIDED.
+    12.2) schedule(dynamic,chunksize) -> each time a thread end the chunksized workload, the next available chunksize loops are allocated to it 
+    12.3) shcedule(guided) -> more loops are allocated to each thread at the beggining - the chunksize is beeing decremented as: 
+            chunksize = round(remaining iterations / #threads). If chunksize has been declared then the decrementation ends at that number.
+
+13) Loop Parallelization 
+        1) loop fusion -> we are fusing the 2 loops by differencianting the programm
+        2) #pragma omp parallel for collapse(#number) --> let the compiler do the loop fusion
+        3) OMP_NESTED -- or omp_set_nested() can be used for nested Parallelization
+        4) OMP_DYNAMIC and omp_set_dynamic(integer) are used mainly for nested loops parallelization where threads spawned may lead to oversubscription
+
+14) #pragma omp task -> spawns tasks and puts them into a waiting queue for the threads to work on.
+                         -> Following the #pragma omp parallel that creates the threads
+        Clauses:
+        if(scalar expression) -- only parallelizes if true
+        final(scalar expression) -- if true then no more tasks will be created. Mostly helpfull for recursive algorithms
+                                 -- It is mainly used for optimization. 1 last task is creates to which the rest of the workload is assigned to.
+                        -->int omp_in_final() -- returns true (1 possibly) if the task is a final task
+        private()
+        shared()
+        firstprivate() -- private variable that gets initialized by its global counterpart
+        mergeable -- allows the takss to be merged with others
+        untied -- allows the task to be used by another thread. Strange memory behavior.
+               -- untied tasks should not be combined with private variable or core dependant on the thread id.
+
+        Common practices:
+        1)  #pragma omp parallel //create the threads
+            {
+                #pragma omp single nowait //only 1 thread needs to create the tasks 
+                {
+                    #pragma omp task //the rest of the threads are assigned to tasks
+                    {
+                    }
+                    #pragma omp task
+                    {
+                    }
+                    //.....
+                }   // no barrier
+            }   // implicit barrier of parallel
+
+        2)  #pragma omp single nowait
+            {
+                for (i=0; i<n; i++){
+                    #pragma omp task firstprivate(i)    //Check weather the counter is declared inside the parallel area or outside
+                                                        //firstprivate(counter) is most of the times Necessary. The counter may be Thread private and lead to errors
+                    {
+                        do_big_Work(i);
+                        if(scalar expression for reduction){
+                            #pragma komp atomic //another way would be incorporating a local counter
+                                                //and reducing during the final task with if(omp_in_final())
+                            n++;
+                        }
+                    }
+                }
+            }
+        
+        3)  int n=0 , pn[NUM_THREADS] = {0};
+            #pragma omp parallel
+            {   //creates the threads
+                //private declarations
+                #pragma omp single nowait //only one thread will create the looped tasks
+                {
+                    for (i=0; i<n; i++) //one thread will create the tasks
+                    {
+                        #pragma omp task firstprivate(i) //create the tasks -- threads are used.
+                        {
+                            do_big_Work(i);
+                            if(scalar expression for reduction)
+                                pn[omp_get_thread_num()]++;
+                        }
+                    }
+                } 
+                #pragma omp atomic //the no wait operation requires the use of atomic
+                n += pn[omp_get_thread_num()];
+
+            } //implicit barrier
+ 
+            
+
+15) #pragma omp taskwait --> creates a barrier for the threads created by common master
+    #pragma omp taskyield --> the task is given to another thread (I dont know the use case)
+16) #pragma omp task scoping --> almost everything that is used in tasks and declared outside of the task scope is firstprivate (of course specifying the variables scope works as expected )
+				 variables declared ouside the #pragma omp parallel are shared by default so race conditions should be considered.
+
+Notes : 
+    1) We do not use omp parallel inside other for loops.
+    2) We should always test the complexity of the parallel tasks in combination with the overhead of synchronization, loop scheduling and tasking
+        The overhead of for and barrier operations is small and following these come the parallel , parallel for and reduction operations. We NEED to have enough 
+        processing in each thread so that openmp overheads become meaningless. (gcc has much smaller overheads than icc)
+    3) hwloc -> hardawre locality tool
+    4) Fasle sharing : a complex problem that includes knowledge from computer architecture and computer science. We do not want the same alligned cache-line (OR cache block)
+        to multiple core lines ( cores ) at the same time. This phenomenon is also addressed as cache thrashing and it destroys almost any gain of multithreaded applications  
+    5) The minimal time a process-thread can release the core is with : sched_yield()
+    6) __attribute__((aligned(64))) --> alligns a type declaration in memory with cache line ( in case cache-line is 64 bytes)
+    7) In parallel algorithms we use erand48 instead of drand-srand. Each seed of erand should also be initialized with a different seed. Possibly connected with the thread id
+    8) Instead of dooing the reduction in a loop, we might prefer to use a local variable that we only reduce once after the end of the loop.
+    9) Speedup(#threads) = time[1] / time[#Threads] =  1 / ( (1- fraction of Unparallizable time) + (parallizable time / 100 ) )
+    10) #pragma omp task --> may be a optimization instead of #pragma omp section. We are limiting the overhead of creating a new thread.
+    11) firstprivate() does not perform copy of values accessed through pointers -> dont pass pointers but values

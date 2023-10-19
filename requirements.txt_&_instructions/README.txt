@@ -2,11 +2,6 @@ The Project is a parallelization exercise for Nonlinear Optimization using the a
 Writen 100% in C using mainly OpenMp and MPI interfaces.
 	--Patra_Ceid::Parallel_Programming_Project_2022--
 
-Collaborators:
-	Sfikas Theodore	https://github.com/SfikasTeo/
-	Sourlas Zisis
-	Papadopoulou Maria
-	
 Instructions:
 
 	4 parallelization methods are used : OpenMP, OpenMP Tasks, MPI, MPI+OpenMP(hybrid model)
